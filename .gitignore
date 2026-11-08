@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+model-out/
+model-src/
+app/src/main/assets/cards.tflite
+app/src/main/assets/labels.txt
+*.apk

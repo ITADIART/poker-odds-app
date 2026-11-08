@@ -1,0 +1,79 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- Card model: download + convert to TensorFlow Lite (cached between builds) ----
+      - name: Cache card model
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: model-out
+          key: card-model-v1-${{ hashFiles('tools/export_model.py') }}
+
+      - uses: actions/setup-python@v5
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Export model to TFLite
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip
+          pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install "ultralytics==8.3.40" huggingface_hub
+          python tools/export_model.py
+
+      - name: Put model in the app
+        run: |
+          mkdir -p app/src/main/assets
+          cp model-out/cards.tflite model-out/labels.txt app/src/main/assets/
+          echo "Labels:" && cat app/src/main/assets/labels.txt | tr '\n' ' '
+          ls -la app/src/main/assets
+
+      # ---- Android build ----
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Same signing key on every build, so a new APK installs over the old one.
+      - name: Cache debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore-v1
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk OddsHoldem-${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OddsHoldem-apk
+          path: OddsHoldem-${{ github.run_number }}.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Odds Hold'em build ${{ github.run_number }}
+          body: Scarica il file .apk qui sotto dal telefono Android e installalo.
+          files: OddsHoldem-${{ github.run_number }}.apk
