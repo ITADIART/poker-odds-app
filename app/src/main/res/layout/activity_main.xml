@@ -101,15 +101,37 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal" />
 
+            <Button
+                android:id="@+id/boardLockBtn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Conferma tavolo" />
+
             <TextView
                 style="@style/Label"
                 android:text="LE TUE CARTE" />
 
             <LinearLayout
-                android:id="@+id/heroChips"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/heroChips"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="horizontal" />
+
+                <Button
+                    android:id="@+id/heroLockBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="58dp"
+                    android:layout_weight="1.2"
+                    android:text="Conferma le mie carte" />
+            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -202,26 +224,17 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/lockBtn"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Blocca carte" />
-
-                <Button
                     android:id="@+id/newHandBtn"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="Nuova mano" />
+                    android:text="Nuova mano (sblocca tutto)" />
             </LinearLayout>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:text="Tocca una carta per correggerla. Trascina la linea gialla sulla fotocamera per separare le tue carte dal tavolo. Il consiglio guarda solo le probabilità (avversari con carte a caso), non posizione, stack o stile di gioco.\n\nSolo per allenarsi nelle partite di prova: nelle partite vere usare un aiuto durante la mano è vietato."
+                android:text="Quando le tue carte sono giuste premi Conferma: restano fisse e la fotocamera continua a leggere solo il tavolo. Confermato il flop, turn e river vengono aggiunti senza cambiare le carte già confermate. Tocca una carta per correggerla (si conferma da sola). Trascina la linea gialla sulla fotocamera per separare le tue carte dal tavolo. Il consiglio guarda solo le probabilità (avversari con carte a caso), non posizione, stack o stile di gioco.\n\nSolo per allenarsi nelle partite di prova: nelle partite vere usare un aiuto durante la mano è vietato."
                 android:textColor="@color/ink_dim"
                 android:textSize="12sp" />
         </LinearLayout>

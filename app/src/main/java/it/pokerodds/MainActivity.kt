@@ -46,7 +46,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var oppText: TextView
     private lateinit var potField: EditText
     private lateinit var callField: EditText
-    private lateinit var lockBtn: Button
+    private lateinit var heroLockBtn: Button
+    private lateinit var boardLockBtn: Button
 
     private var detector: CardDetector? = null
     private val analysisExec: ExecutorService = Executors.newSingleThreadExecutor()
@@ -56,7 +57,10 @@ class MainActivity : ComponentActivity() {
 
     private var hero = IntArray(2) { -1 }
     private var board = IntArray(5) { -1 }
-    private var locked = false
+    /** Confirmed cards stay fixed: the camera no longer changes them. */
+    private var heroLocked = false
+    /** Confirmed board: existing cards stay, the camera may only add new ones (turn, river). */
+    private var boardLocked = false
     private var opponents = 2
     private var lastEquity: EquityResult? = null
     private var lastStreet = "preflop"
@@ -83,22 +87,25 @@ class MainActivity : ComponentActivity() {
         oppText = findViewById(R.id.oppText)
         potField = findViewById(R.id.pot)
         callField = findViewById(R.id.call)
-        lockBtn = findViewById(R.id.lockBtn)
+        heroLockBtn = findViewById(R.id.heroLockBtn)
+        boardLockBtn = findViewById(R.id.boardLockBtn)
 
         previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
         overlay.onSplitChanged = { tracker.reset() }
 
         findViewById<Button>(R.id.oppMinus).setOnClickListener { setOpponents(opponents - 1) }
         findViewById<Button>(R.id.oppPlus).setOnClickListener { setOpponents(opponents + 1) }
-        lockBtn.setOnClickListener { setLocked(!locked) }
+        heroLockBtn.setOnClickListener { setLocks(!heroLocked, boardLocked) }
+        boardLockBtn.setOnClickListener { setLocks(heroLocked, !boardLocked) }
         findViewById<Button>(R.id.newHandBtn).setOnClickListener {
             hero = IntArray(2) { -1 }
             board = IntArray(5) { -1 }
             tracker.reset()
             callField.setText("0")
-            setLocked(false)
+            setLocks(hero = false, board = false)
             cardsChanged()
         }
+        setLocks(hero = false, board = false)
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -184,17 +191,37 @@ class MainActivity : ComponentActivity() {
         val h = frame.height
         runOnUiThread {
             overlay.update(dets, w, h)
-            status.text = "${ms} ms · ${dets.map { it.card }.distinct().size} carte" + if (locked) " · bloccate" else ""
+            status.text = "${ms} ms · ${dets.map { it.card }.distinct().size} carte"
             val (heroSeen, boardSeen) = tracker.update(dets, overlay.split)
-            if (!locked) applySeen(heroSeen, boardSeen)
+            applySeen(heroSeen, boardSeen)
         }
     }
 
     private fun applySeen(heroSeen: List<Int>, boardSeen: List<Int>) {
-        val newHero = IntArray(2) { heroSeen.getOrElse(it) { -1 } }
-        val newBoard = IntArray(5) { boardSeen.getOrElse(it) { -1 } }
-        // Keep your two cards in a stable order so the display doesn't flicker.
-        if (newHero.toSet() == hero.toSet()) newHero.indices.forEach { newHero[it] = hero[it] }
+        if (heroLocked && boardLocked && board.none { it < 0 }) return
+        val lockedBoard = if (boardLocked) board.filter { it >= 0 }.toSet() else emptySet()
+        val newHero = if (heroLocked) hero.copyOf() else {
+            val seen = heroSeen.filter { it !in lockedBoard }
+            val h = IntArray(2) { seen.getOrElse(it) { -1 } }
+            // Keep your two cards in a stable order so the display doesn't flicker.
+            if (h.toSet() == hero.toSet()) hero.copyOf() else h
+        }
+        val heroSet = newHero.filter { it >= 0 }.toSet()
+        val newBoard = if (boardLocked) {
+            val b = board.copyOf()
+            val have = b.filter { it >= 0 }.toMutableSet()
+            for (c in boardSeen) {
+                if (c in have || c in heroSet) continue
+                val free = b.indexOf(-1)
+                if (free < 0) break
+                b[free] = c
+                have.add(c)
+            }
+            b
+        } else {
+            val list = boardSeen.filter { it !in heroSet }
+            IntArray(5) { list.getOrElse(it) { -1 } }
+        }
         if (!newHero.contentEquals(hero) || !newBoard.contentEquals(board)) {
             hero = newHero
             board = newBoard
@@ -204,10 +231,15 @@ class MainActivity : ComponentActivity() {
 
     // ---------------- Cards UI ----------------
 
-    private fun setLocked(value: Boolean) {
-        locked = value
-        lockBtn.text = if (locked) "Sblocca (riprendi lettura)" else "Blocca carte"
-        if (!locked) tracker.reset()
+    private fun setLocks(hero: Boolean, board: Boolean) {
+        if (heroLocked && !hero || boardLocked && !board) tracker.reset()
+        heroLocked = hero
+        boardLocked = board
+        heroLockBtn.text = if (heroLocked) "✓ Confermate\n(tocca per rileggere)" else "Conferma le mie carte"
+        boardLockBtn.text = if (boardLocked) "✓ Tavolo confermato: aggiungo solo turn e river (tocca per rileggere)" else "Conferma tavolo"
+        heroLockBtn.setTextColor(if (heroLocked) 0xFF3FCF8E.toInt() else 0xFFEEF3EC.toInt())
+        boardLockBtn.setTextColor(if (boardLocked) 0xFF3FCF8E.toInt() else 0xFFEEF3EC.toInt())
+        renderChips()
     }
 
     private fun setOpponents(n: Int) {
@@ -224,6 +256,7 @@ class MainActivity : ComponentActivity() {
     private fun renderChips() {
         fun fill(container: LinearLayout, cards: IntArray, zone: String) {
             container.removeAllViews()
+            val confirmed = if (zone == "hero") heroLocked else boardLocked
             val d = resources.displayMetrics.density
             cards.forEachIndexed { i, c ->
                 val tv = TextView(this)
@@ -236,6 +269,7 @@ class MainActivity : ComponentActivity() {
                 val bg = GradientDrawable().apply { cornerRadius = 7 * d }
                 if (c >= 0) {
                     bg.setColor(0xFFFBFAF5.toInt())
+                    if (confirmed) bg.setStroke((3 * d).toInt(), 0xFF3FCF8E.toInt())
                     tv.text = Cards.display(c)
                     tv.setTextColor(Cards.suitColor(c))
                 } else {
@@ -248,7 +282,6 @@ class MainActivity : ComponentActivity() {
                 tv.setOnClickListener { pickCard(zone, i) }
                 container.addView(tv)
             }
-            if (zone == "hero") repeat(3) { container.addView(TextView(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) }) }
         }
         fill(boardChips, board, "board")
         fill(heroChips, hero, "hero")
@@ -282,7 +315,7 @@ class MainActivity : ComponentActivity() {
                 }
                 setOnClickListener {
                     arr[index] = c
-                    setLocked(true)
+                    lockZone(zone)
                     cardsChanged()
                     dialog?.dismiss()
                 }
@@ -296,10 +329,15 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton("Chiudi", null)
             .setNeutralButton("Togli") { _, _ ->
                 arr[index] = -1
-                setLocked(true)
+                lockZone(zone)
                 cardsChanged()
             }
             .show()
+    }
+
+    /** A card corrected by hand must not be overwritten by the camera. */
+    private fun lockZone(zone: String) {
+        if (zone == "hero") setLocks(true, boardLocked) else setLocks(heroLocked, true)
     }
 
     // ---------------- Odds & advice ----------------
